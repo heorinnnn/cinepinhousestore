@@ -60,7 +60,8 @@ width: 24vw;
 max-width: 320px;
 height: 120px;
 z-index: 10;
-pointer-events: none;
+pointer-events: auto; /* 클릭 가능하도록 변경 */
+cursor: pointer; /* 마우스 호버 시 포인터 표시 */
 display: flex;
 justify-content: space-between;
 align-items: flex-end;
@@ -244,6 +245,33 @@ const imgQuiet = document.getElementById('quiet-potato');
 const imgCouch = document.getElementById('couch-potato');
 const imgLazy = document.getElementById('lazy-potato');
 const imgHouse = document.getElementById('house-img');
+
+// ==================================================
+// 감자 이미지 클릭 시 전체화면 기능 추가
+// ==================================================
+const potatoContainer = document.querySelector('.overlay-potato');
+
+if (potatoContainer) {
+  potatoContainer.addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen();
+      } else if (document.documentElement.webkitRequestFullscreen) {
+        document.documentElement.webkitRequestFullscreen();
+      } else if (document.documentElement.msRequestFullscreen) {
+        document.documentElement.msRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+      }
+    }
+  });
+}
 
 // ==================================================
 // 개별 손 제스처 감지 함수
