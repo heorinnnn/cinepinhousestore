@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gesture Tracking Interactive Camera</title>
+
+<style>
+* {
+box-sizing: border-box;
+margin: 0;
+padding: 0;
+}
+
+body, html {
+width: 100%;
+height: 100%;
+overflow: hidden;
+background-color: #000;
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 1. 웹캠 비디오 */
+#webcam {
+position: absolute;
+top: 0;
+left: 0;
+width: 100vw;
+height: 100vh;
+object-fit: cover;
+transform: scaleX(-1);
+z-index: 1;
+}
+
+/* 2. 기본 상단 중앙 이미지 */
+#overlay-text {
+position: absolute;
+top: 8vh;
+left: 50%;
+transform: translateX(-50%);
+width: 55vw;
+max-width: 750px;
+z-index: 10;
+pointer-events: none;
+transition: opacity 0.2s ease;
+}
+
+#overlay-text img {
+width: 100%;
+height: auto;
+filter: drop-shadow(0px 4px 12px rgba(0, 0, 0, 0.4));
+}
+
+/* 3. 오른쪽 아래 감자 3개 */
+.overlay-potato {
+position: absolute;
+bottom: 5vh;
+right: 4vw;
+width: 24vw;
+max-width: 320px;
+height: 120px;
+z-index: 10;
+pointer-events: none;
+display: flex;
+justify-content: space-between;
+align-items: flex-end;
+}
+
+.potato-item {
+width: 30%;
+height: 100%;
+background-image: url('threepotato.png');
+background-size: 300% 100%;
+background-repeat: no-repeat;
+filter: drop-shadow(0px 4px 10px rgba(0, 0, 0, 0.3));
+animation: bounce 1.4s infinite ease-in-out;
+}
+
+.potato-item:nth-child(1) {
+background-position: 0% 0%;
+animation-delay: 0s;
+}
+
+.potato-item:nth-child(2) {
+background-position: 50% 0%;
+animation-delay: 0.25s;
+}
+
+.potato-item:nth-child(3) {
+background-position: 100% 0%;
+animation-delay: 0.5s;
+}
+
+@keyframes bounce {
+0%, 100% {
+transform: translateY(0) scale(1, 1);
+}
+30% {
+transform: translateY(-28px) scale(0.95, 1.05);
+}
+50% {
+transform: translateY(0) scale(1.05, 0.95);
+}
+65% {
+transform: translateY(-8px) scale(0.98, 1.02);
+}
+}
+
+/* 손 위치 추적 이미지 공통 스타일 */
+.tracking-img {
+position: absolute;
+z-index: 20;
+pointer-events: none;
+display: none;
+transition: left 0.05s linear, top 0.05s linear, transform 0.1s ease;
+filter: drop-shadow(0px 6px 15px rgba(0,0,0,0.5));
+}
+
+/* 👍 엄지척 (왼손 & 오른손) */
+#thumb-movie, #director-movie {
+width: 300px;
+transform: translate(-50%, -110%);
+}
+
+/* 🤫 쉿 */
+#quiet-potato {
+width: 180px;
+}
+
+#quiet-potato.quiet-right {
+transform: translate(180px, -50%);
+}
+
+#quiet-potato.quiet-left {
+transform: translate(-360px, -50%);
+}
+
+/* ✌️ 한 손 브이 */
+#couch-potato {
+width: 420px;
+transform: translate(-50%, -100%);
+}
+
+/* ✌️✌️ 양손 브이 → Lazy Potato */
+#lazy-potato {
+position: absolute;
+top: 25%;
+left: calc(50% + 250px);
+width: 345px;
+transform: translateY(-50%);
+z-index: 25;
+pointer-events: none;
+display: none;
+filter: drop-shadow(0px 6px 15px rgba(0,0,0,0.5));
+animation: lazyAppear 0.2s ease-out;
+}
+
+/* 🏠 양손 모으기 → House */
+#house-img {
+width: 150px;
+transform: translate(25%, -60%);
+}
+
+@keyframes lazyAppear {
+0% {
+opacity: 0;
+transform: translateY(-50%) scale(0.6);
+}
+100% {
+opacity: 1;
+transform: translateY(-50%) scale(1);
+}
+}
+
+#status-msg {
+position: absolute;
+top: 50%;
+left: 50%;
+transform: translate(-50%, -50%);
+color: #ffffff;
+background: rgba(0, 0, 0, 0.85);
+padding: 20px 30px;
+border-radius: 12px;
+font-size: 16px;
+z-index: 30;
+text-align: center;
+line-height: 1.5;
+}
+</style>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+
+<div id="status-msg">
+카메라 및 AI 모델을 연결하고 있습니다...
+<br>
+<small>브라우저 상단의 카메라 허용 팝업을 확인해 주세요!</small>
+</div>
+
+<!-- 비디오 -->
+<video id="webcam" autoplay playsinline muted></video>
+
+<!-- 기본 고정 요소 -->
+<div id="overlay-text">
+<img src="text.png" alt="Text Overlay">
+</div>
+
+<div class="overlay-potato">
+<div class="potato-item"></div>
+<div class="potato-item"></div>
+<div class="potato-item"></div>
+</div>
+
+<!-- 👍 (왼손 엄지척) -->
+<img id="thumb-movie" class="tracking-img" src="2026movie.png" alt="2026 Movie">
+
+<!-- 👍 (오른손 엄지척) -->
+<img id="director-movie" class="tracking-img" src="director.png" alt="Director">
+
+<!-- 🤫 -->
+<img id="quiet-potato" class="tracking-img quiet-right" src="quietpotato.png" alt="Quiet Potato">
+
+<!-- ✌️ (한 손 브이) -->
+<img id="couch-potato" class="tracking-img" src="areyouacouchpotato.png" alt="Are You A Couch Potato">
+
+<!-- ✌️✌️ (양손 브이) -->
+<img id="lazy-potato" src="lazypotato.png" alt="Lazy Potato">
+
+<!-- 🏠 (양손 모으기) -->
+<img id="house-img" class="tracking-img" src="house.png" alt="House">
+
+<script>
+const videoElement = document.getElementById('webcam');
+const statusMsg = document.getElementById('status-msg');
+const overlayText = document.getElementById('overlay-text');
+
+const imgMovie = document.getElementById('thumb-movie');
+const imgDirector = document.getElementById('director-movie');
+const imgQuiet = document.getElementById('quiet-potato');
+const imgCouch = document.getElementById('couch-potato');
+const imgLazy = document.getElementById('lazy-potato');
+const imgHouse = document.getElementById('house-img');
+
+// ==================================================
+// 개별 손 제스처 감지 함수
+// ==================================================
+function detectGesture(landmarks, handSide) {
+const thumbTip = landmarks[4];
+const thumbIp = landmarks[3];
+
+const indexTip = landmarks[8];
+const indexPip = landmarks[6];
+
+const middleTip = landmarks[12];
+const middlePip = landmarks[10];
+
+const ringTip = landmarks[16];
+const ringPip = landmarks[14];
+
+const pinkyTip = landmarks[20];
+const pinkyPip = landmarks[18];
+
+const isIndexUp = indexTip.y < indexPip.y;
+const isMiddleUp = middleTip.y < middlePip.y;
+const isRingUp = ringTip.y < ringPip.y;
+const isPinkyUp = pinkyTip.y < pinkyPip.y;
+
+const isThumbUp = thumbTip.y < thumbIp.y && thumbTip.y < indexPip.y;
+
+const currentX = (1 - indexTip.x) * window.innerWidth;
+const currentY = indexTip.y * window.innerHeight;
+
+const thumbX = (1 - thumbTip.x) * window.innerWidth;
+const thumbY = thumbTip.y * window.innerHeight;
+
+/* ✌️ 브이 */
+if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) {
+return { type: 'V', x: currentX, y: currentY, handSide };
+}
+
+/* 👍 엄지척 */
+if (isThumbUp && !isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
+return { type: 'THUMB', x: thumbX, y: thumbY, handSide };
+}
+
+/* 🤫 쉿 */
+if (isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
+return { type: 'QUIET', x: currentX, y: currentY, handSide };
+}
+
+return { type: 'OTHER', x: currentX, y: currentY, rawLandmarks: landmarks, handSide };
+}
+
+// ==================================================
+// MediaPipe 결과 처리
+// ==================================================
+function onResults(results) {
+statusMsg.style.display = 'none';
+
+// 매 프레임 초기화
+imgMovie.style.display = 'none';
+imgDirector.style.display = 'none';
+imgQuiet.style.display = 'none';
+imgCouch.style.display = 'none';
+imgLazy.style.display = 'none';
+imgHouse.style.display = 'none';
+overlayText.style.opacity = '1';
+
+if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+const detectedGestures = [];
+
+// 1. 인식된 모든 손의 제스처 수집
+for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+const landmarks = results.multiHandLandmarks[i];
+let handSide = 'Right';
+
+if (results.multiHandedness && results.multiHandedness[i]) {
+const rawLabel = results.multiHandedness[i].label;
+handSide = (rawLabel === 'Right') ? 'Left' : 'Right';
+}
+
+const gesture = detectGesture(landmarks, handSide);
+if (gesture) {
+detectedGestures.push(gesture);
+}
+}
+
+// 2. 양손 모으기 감지 (지붕 형태)
+if (results.multiHandLandmarks.length >= 2) {
+const hand1 = results.multiHandLandmarks[0];
+const hand2 = results.multiHandLandmarks[1];
+
+// 두 손 검지 끝의 거리 계산
+const dx = hand1[8].x - hand2[8].x;
+const dy = hand1[8].y - hand2[8].y;
+const distance = Math.sqrt(dx * dx + dy * dy);
+
+if (distance < 0.25) {
+const rightHand = hand1[5].x < hand2[5].x ? hand1[5] : hand2[5];
+
+const rightX = (1 - rightHand.x) * window.innerWidth;
+const rightY = rightHand.y * window.innerHeight;
+
+imgHouse.style.display = 'block';
+imgHouse.style.left = `${rightX}px`;
+imgHouse.style.top = `${rightY}px`;
+return;
+}
+}
+
+// 3. '브이' 제스처 개수 파악
+const vGestures = detectedGestures.filter(g => g.type === 'V');
+
+// ★ 조건 1: 양손 모두 브이(✌️ + ✌️) → lazypotato.png 활성화 및 text.png 숨김
+if (vGestures.length >= 2) {
+overlayText.style.opacity = '0';
+imgLazy.style.display = 'block';
+}
+// ★ 조건 2: 한 손 제스처 동작 처리
+else if (detectedGestures.length > 0) {
+const gesture = detectedGestures[0];
+
+/* ✌️ 한 손 브이 */
+if (gesture.type === 'V') {
+overlayText.style.opacity = '0';
+imgCouch.style.display = 'block';
+imgCouch.style.left = `${gesture.x}px`;
+imgCouch.style.top = `${gesture.y}px`;
+}
+/* 👍 엄지척 (왼손 / 오른손 구분) */
+else if (gesture.type === 'THUMB') {
+if (gesture.handSide === 'Left') {
+imgMovie.style.display = 'block';
+imgMovie.style.left = `${gesture.x}px`;
+imgMovie.style.top = `${gesture.y}px`;
+} else {
+imgDirector.style.display = 'block';
+imgDirector.style.left = `${gesture.x}px`;
+imgDirector.style.top = `${gesture.y}px`;
+}
+}
+/* 🤫 쉿 */
+else if (gesture.type === 'QUIET') {
+imgQuiet.style.display = 'block';
+imgQuiet.style.left = `${gesture.x}px`;
+imgQuiet.style.top = `${gesture.y}px`;
+
+if (gesture.handSide === 'Left') {
+imgQuiet.classList.remove('quiet-left');
+imgQuiet.classList.add('quiet-right');
+} else {
+imgQuiet.classList.remove('quiet-right');
+imgQuiet.classList.add('quiet-left');
+}
+}
+}
+}
+}
+
+// ==================================================
+// MediaPipe Hands 및 카메라 초기화
+// ==================================================
+async function initApp() {
+try {
+if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
+throw new Error("MediaPipe 라이브러리를 불러오지 못했습니다.");
+}
+
+const hands = new Hands({
+locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+maxNumHands: 2,
+modelComplexity: 1,
+minDetectionConfidence: 0.6,
+minTrackingConfidence: 0.6
+});
+
+hands.onResults(onResults);
+
+const camera = new Camera(videoElement, {
+onFrame: async () => {
+await hands.send({ image: videoElement });
+},
+width: 1280,
+height: 720
+});
+
+await camera.start();
+await videoElement.play();
+
+} catch (err) {
+console.error(err);
+statusMsg.innerHTML = `
+<strong style="color:#ff6b6b;">카메라 실행 오류</strong><br>
+${err.message || err}
+`;
+}
+}
+
+window.addEventListener('DOMContentLoaded', initApp);
+</script>
+
+</body>
+</html>
